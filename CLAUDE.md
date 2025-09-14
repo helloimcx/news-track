@@ -67,6 +67,24 @@ uv lock --upgrade
 uv lock --upgrade-package <package-name>
 ```
 
+### Docker Development
+```bash
+# Build the Docker image
+docker-compose build
+
+# Start the application in scheduler mode
+docker-compose up -d
+
+# Run the pipeline once (override default command)
+docker-compose run --rm news-tracker uv run python -m app.main --mode once
+
+# View logs
+docker-compose logs -f
+
+# Stop the application
+docker-compose down
+```
+
 ## Architecture Overview
 
 The application follows a modular architecture with separate components for collection, processing, and notification. The main flow is:

@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  news-tracker:
+    build: .
+    container_name: news-tracker
+    volumes:
+      # Mount data directory for persistent storage
+      - ./data:/app/data
+      # Mount logs directory for log persistence
+      - ./logs:/app/logs
+      # Mount .env file for configuration
+      - ./.env:/app/.env:ro
+    environment:
+      # Set timezone
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    # For development, you might want to override the command
+    # command: ["uv", "run", "python", "-m", "app.main", "--mode", "once"]
+
+  # Optional: If you want to use a separate database container instead of SQLite
+  # database:
+  #   image: postgres:15
+  #   container_name: news-tracker-db
+  #   environment:
+  #     POSTGRES_DB: news_tracker
+  #     POSTGRES_USER: news_tracker
+  #     POSTGRES_PASSWORD: password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+
+# volumes:
+  # postgres_data:

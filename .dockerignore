@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Test cache
+.pytest_cache/
+
+# Virtual environments
+.venv
+
+# Environment files (should be provided separately)
+.env
+
+# Logs and data (these should be mounted as volumes)
+logs/
+data/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
