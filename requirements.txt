@@ -1,0 +1,8 @@
+fastapi
+pydantic
+python-dotenv
+apscheduler
+requests
+pytest
+pytest-asyncio
+sqlalchemy>=2.0.0
