@@ -14,9 +14,23 @@ services:
     environment:
       # Set timezone
       - TZ=Asia/Shanghai
+      # Add environment variables for better logging
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
+      - PYTHONDONTWRITEBYTECODE=1
     restart: unless-stopped
+    # Add logging configuration to see container logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     # For development, you might want to override the command
-    # command: ["uv", "run", "python", "-m", "app.main", "--mode", "once"]
+    command: ["uv", "run", "python", "-m", "app.main", "--mode", "schedule"]
+    # Alternative commands for debugging:
+    # command: ["python", "diagnostics.py"]  # Run diagnostics
+    # command: ["uv", "run", "python", "-m", "app.main", "--mode", "once"]  # Run once
+    # command: ["python", "test_docker_logs.py"]  # Test logging
 
   # Optional: If you want to use a separate database container instead of SQLite
   # database:

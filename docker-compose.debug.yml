@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  news-tracker:
+    # Override command for debugging
+    command: ["python", "test_docker_logs.py"]
+    # Remove restart policy for development
+    restart: "no"
+    # Add environment variables for debugging
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
+      - PYTHONDONTWRITEBYTECODE=1
+    # Add development-specific logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -8,15 +8,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # --- Nested Configuration Models ---
 
+class DeduplicationConfig(BaseModel):
+    """Configuration for article deduplication."""
+    enabled: bool = True
+    url_similarity_threshold: float = 0.95
+    content_similarity_threshold: float = 0.85
+    load_existing_days: int = 7  # Days to look back for existing articles
+
 class SchedulerConfig(BaseModel):
     """Configuration for the scheduler."""
     timezone: str = "Asia/Shanghai"
-    # Cron expression for the job, e.g., "0 0 9 * * *" for daily at 9 AM
-    # Format: second minute hour day month day_of_week
-    # For simplicity in config, we can parse a standard cron string (without seconds)
-    # and default seconds to 0. Or, define individual fields.
-    # Let's define common scheduling fields for clarity.
-    # If all are None/defaults, a default schedule (e.g., daily at 9 AM) is used.
+    # Scheduler mode: 'cron' for specific time, 'interval' for periodic execution
+    mode: str = "interval"  # "cron" or "interval"
+    # Interval settings (used when mode='interval')
+    interval_hours: int = 1  # Run every X hours
+    interval_minutes: int = 0  # Additional minutes (optional)
+    # Cron settings (used when mode='cron')
     hour: int | None = 9
     minute: int | None = 0
     second: int | None = 0
@@ -121,6 +128,9 @@ class Settings(BaseSettings):
     
     # --- Scheduler Settings ---
     scheduler: SchedulerConfig = SchedulerConfig()
+    
+    # --- Deduplication Settings ---
+    deduplication: DeduplicationConfig = DeduplicationConfig()
     
     # --- Email Notifier Settings (Optional) ---
     email: EmailConfig | None = None

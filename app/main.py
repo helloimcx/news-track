@@ -44,8 +44,10 @@ from apscheduler.jobstores.base import JobLookupError
 
 from app.collectors.rss import RSSCollector
 from app.collectors.huatu import HuatuCollector
+from app.collectors.google_search import GoogleSearchCollector
 from app.processors.llm import LLMProcessor
 from app.notifiers.email import EmailNotifier
+from app.utils.deduplication import get_deduplicator
 # RSS discovery service removed
 from app.models import Article, ProcessedArticle, Digest
 from app.config import settings
@@ -160,6 +162,13 @@ async def run_pipeline() -> Optional[Digest]:
             logger.error(f"Failed to initialize database: {e}", exc_info=True)
             # Database initialization failure should not stop the entire process
     
+    # Initialize deduplicator
+    deduplicator = get_deduplicator()
+    if settings.deduplication.enabled:
+        logger.info("Deduplication is enabled - will check against database records")
+    else:
+        logger.info("Deduplication is disabled in configuration")
+    
     # --- 1. Initialize Components ---
     # Check if required configs are present
     if not settings.email:
@@ -183,6 +192,13 @@ async def run_pipeline() -> Optional[Digest]:
             logger.info("正在通过华图教育网收集器获取文章...")
             articles = await huatu_collector.fetch_articles()
             logger.info(f"华图教育网收集：收集了 {len(articles)} 篇文章。")
+            
+            # Apply deduplication
+            if articles and settings.deduplication.enabled:
+                unique_articles = deduplicator.deduplicate_articles(articles)
+                logger.info(f"去重后剩余 {len(unique_articles)} 篇文章")
+                articles = unique_articles
+            
             if articles:
                 # 如果成功获取到文章，直接处理
                 return await process_articles(articles)
@@ -202,6 +218,12 @@ async def run_pipeline() -> Optional[Digest]:
             logger.info(f"Collecting articles via Google Search for topic: '{search_config.topic}'...")
             articles = await google_collector.fetch_articles()
             logger.info(f"Google Search Collection: Collected {len(articles)} articles.")
+            
+            # Apply deduplication
+            if articles and settings.deduplication.enabled:
+                unique_articles = deduplicator.deduplicate_articles(articles)
+                logger.info(f"After deduplication: {len(unique_articles)} unique articles")
+                articles = unique_articles
         except Exception as e:
             logger.error(f"Error during Google Search collection: {e}", exc_info=True)
             return None
@@ -219,6 +241,12 @@ async def run_pipeline() -> Optional[Digest]:
                 collector = RSSCollector(feed_urls=feed_urls_to_use)
                 articles = await collector.collect()
                 logger.info(f"RSS Collection: Collected {len(articles)} articles.")
+                
+                # Apply deduplication
+                if articles and settings.deduplication.enabled:
+                    unique_articles = deduplicator.deduplicate_articles(articles)
+                    logger.info(f"After deduplication: {len(unique_articles)} unique articles")
+                    articles = unique_articles
             except Exception as e:
                 logger.error(f"Error during RSS collection: {e}", exc_info=True)
                 return None
@@ -239,7 +267,7 @@ async def run_scheduler():
     Sets up and starts the APScheduler to run the pipeline periodically.
     The schedule is configured via app.config.settings.scheduler.
     """
-    print("Initializing scheduler...")
+    logger.info("Initializing scheduler...")
     
     # Create an AsyncIOScheduler instance
     scheduler = AsyncIOScheduler()
@@ -247,41 +275,72 @@ async def run_scheduler():
     # Get schedule parameters from settings
     sched_config = settings.scheduler
     timezone = sched_config.timezone
-    hour = sched_config.hour if sched_config.hour is not None else 9
-    minute = sched_config.minute if sched_config.minute is not None else 0
-    second = sched_config.second if sched_config.second is not None else 0
+    mode = sched_config.mode
+    
+    logger.info(f"Scheduler mode: {mode}, timezone: {timezone}")
 
-
-    # Add the run_pipeline job
+    # Add the run_pipeline job based on configuration mode
     try:
-        scheduler.add_job(
-            run_pipeline,  # The function to call
-            'cron',        # Trigger type
-            hour=hour,
-            minute=minute,
-            second=second,
-            timezone=timezone,
-            id='news_digest_job' # Unique ID for the job
-        )
-        print(f"Job 'news_digest_job' added to scheduler.")
-        print(f"Schedule: {second} {minute} {hour} * * * (timezone: {timezone})")
+        if mode == "interval":
+            # Interval mode - run periodically
+            interval_hours = sched_config.interval_hours
+            interval_minutes = sched_config.interval_minutes
+            
+            scheduler.add_job(
+                run_pipeline,  # The function to call
+                'interval',    # Trigger type - run at intervals
+                hours=interval_hours,
+                minutes=interval_minutes,
+                timezone=timezone,
+                id='news_digest_job' # Unique ID for the job
+            )
+            logger.info(f"Job 'news_digest_job' added to scheduler.")
+            logger.info(f"Schedule: Every {interval_hours} hours and {interval_minutes} minutes (timezone: {timezone})")
+        
+        elif mode == "cron":
+            # Cron mode - run at specific times
+            hour = sched_config.hour if sched_config.hour is not None else 9
+            minute = sched_config.minute if sched_config.minute is not None else 0
+            second = sched_config.second if sched_config.second is not None else 0
+            
+            scheduler.add_job(
+                run_pipeline,  # The function to call
+                'cron',        # Trigger type
+                hour=hour,
+                minute=minute,
+                second=second,
+                timezone=timezone,
+                id='news_digest_job' # Unique ID for the job
+            )
+            logger.info(f"Job 'news_digest_job' added to scheduler.")
+            logger.info(f"Schedule: {second} {minute} {hour} * * * (timezone: {timezone})")
+        
+        else:
+            logger.error(f"Unknown scheduler mode: {mode}. Supported modes: 'interval', 'cron'")
+            return
     except Exception as e:
-        print(f"Failed to add job to scheduler: {e}")
+        logger.error(f"Failed to add job to scheduler: {e}")
         return
 
     # Start the scheduler
     scheduler.start()
-    print(f"Scheduler started.")
-    print("Press Ctrl+C to exit.")
+    logger.info(f"Scheduler started successfully.")
+    logger.info("Application is running. Press Ctrl+C to exit.")
+    
+    # Log current configuration status
+    logger.info(f"Huatu collector enabled: {settings.huatu.enabled}")
+    logger.info(f"Email configuration present: {settings.email is not None}")
+    logger.info(f"Database enabled: {settings.database.enabled}")
 
     try:
         # Keep the main thread alive
         while True:
-            await asyncio.sleep(1000)
+            await asyncio.sleep(60)  # Wake up every minute to log status
+            logger.debug("Scheduler heartbeat - application is running")
     except KeyboardInterrupt:
-        print("Shutting down scheduler...")
+        logger.info("Shutting down scheduler...")
         scheduler.shutdown()
-        print("Scheduler shut down.")
+        logger.info("Scheduler shut down.")
 
 
 # --- Main Execution Block ---
@@ -299,11 +358,11 @@ if __name__ == "__main__":
 
     try:
         if args.mode == "once":
-            print("Running pipeline once...")
+            logger.info("Running pipeline once...")
             asyncio.run(run_pipeline())
         elif args.mode == "schedule":
-            print("Starting scheduler...")
+            logger.info("Starting scheduler...")
             asyncio.run(run_scheduler())
     except Exception as e:
-        print(f"Application failed with error: {e}")
+        logger.error(f"Application failed with error: {e}", exc_info=True)
         sys.exit(1)

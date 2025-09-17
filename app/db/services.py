@@ -4,7 +4,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 
 from app.models import Article, ProcessedArticle, Digest
 from app.db.models import ArticleDB, ProcessedArticleDB, DigestDB, DigestArticleDB
@@ -17,7 +17,7 @@ class ArticleService:
     """文章存储服务"""
     
     @staticmethod
-    def save_article(article: Article, db: Session = None) -> ArticleDB:
+    def save_article(article: Article, db: Session | None = None) -> ArticleDB:
         """保存文章到数据库
         
         Args:
@@ -56,7 +56,7 @@ class ArticleService:
                 db.close()
     
     @staticmethod
-    def get_article_by_id(article_id: str, db: Session = None) -> Optional[Article]:
+    def get_article_by_id(article_id: str, db: Session | None = None) -> Optional[Article]:
         """根据ID获取文章
         
         Args:
@@ -82,7 +82,69 @@ class ArticleService:
                 db.close()
     
     @staticmethod
-    def get_recent_articles(days: int = 7, limit: int = 100, db: Session = None) -> List[Article]:
+    def check_article_exists_by_url(url: str, db: Session | None = None) -> Optional[Article]:
+        """根据URL检查文章是否已存在
+        
+        Args:
+            url: 文章URL
+            db: 数据库会话，如果为None则创建新会话
+            
+        Returns:
+            如果存在则返回文章，否则返回None
+        """
+        close_db = False
+        if db is None:
+            from app.db.database import get_db_session
+            db = get_db_session()
+            close_db = True
+            
+        try:
+            db_article = db.query(ArticleDB).filter(ArticleDB.url == url).first()
+            if db_article:
+                return db_article.to_model()
+            return None
+        finally:
+            if close_db:
+                db.close()
+    
+    @staticmethod
+    def find_similar_articles_by_title(title: str, similarity_threshold: float = 0.8, db: Session | None = None) -> List[Article]:
+        """根据标题查找相似文章
+        
+        Args:
+            title: 文章标题
+            similarity_threshold: 相似度阈值（暂时未使用，预留用于扩展）
+            db: 数据库会话，如果为None则创建新会话
+            
+        Returns:
+            相似文章列表
+        """
+        close_db = False
+        if db is None:
+            from app.db.database import get_db_session
+            db = get_db_session()
+            close_db = True
+            
+        try:
+            # 简单的标题相似性检查：查找包含相同关键词的文章
+            # 可以后续扩展为更复杂的相似性算法
+            title_words = title.lower().split()
+            if len(title_words) < 2:
+                return []
+            
+            # 构建查询条件：标题包含多个关键词
+            conditions = [ArticleDB.title.ilike(f"%{word}%") for word in title_words if len(word) > 2]
+            if not conditions:
+                return []
+            
+            db_articles = db.query(ArticleDB).filter(or_(*conditions)).limit(10).all()
+            return [article.to_model() for article in db_articles]
+        finally:
+            if close_db:
+                db.close()
+    
+    @staticmethod
+    def get_recent_articles(days: int = 7, limit: int = 100, db: Session | None = None) -> List[Article]:
         """获取最近的文章
         
         Args:
@@ -116,7 +178,7 @@ class ProcessedArticleService:
     """处理后的文章存储服务"""
     
     @staticmethod
-    def save_processed_article(processed_article: ProcessedArticle, db: Session = None) -> ProcessedArticleDB:
+    def save_processed_article(processed_article: ProcessedArticle, db: Session | None = None) -> ProcessedArticleDB:
         """保存处理后的文章到数据库
         
         Args:
@@ -158,7 +220,7 @@ class ProcessedArticleService:
                 db.close()
     
     @staticmethod
-    def get_processed_article_by_id(article_id: str, db: Session = None) -> Optional[ProcessedArticle]:
+    def get_processed_article_by_id(article_id: str, db: Session | None = None) -> Optional[ProcessedArticle]:
         """根据ID获取处理后的文章
         
         Args:
@@ -184,7 +246,7 @@ class ProcessedArticleService:
                 db.close()
     
     @staticmethod
-    def get_recent_processed_articles(days: int = 7, limit: int = 100, db: Session = None) -> List[ProcessedArticle]:
+    def get_recent_processed_articles(days: int = 7, limit: int = 100, db: Session | None = None) -> List[ProcessedArticle]:
         """获取最近的处理后文章
         
         Args:
@@ -218,7 +280,7 @@ class DigestService:
     """摘要存储服务"""
     
     @staticmethod
-    def save_digest(digest: Digest, db: Session = None) -> DigestDB:
+    def save_digest(digest: Digest, db: Session | None = None) -> DigestDB:
         """保存摘要到数据库
         
         Args:
@@ -272,7 +334,7 @@ class DigestService:
                 db.close()
     
     @staticmethod
-    def get_digest_by_id(digest_id: str, db: Session = None) -> Optional[Digest]:
+    def get_digest_by_id(digest_id: str, db: Session | None = None) -> Optional[Digest]:
         """根据ID获取摘要
         
         Args:
@@ -298,7 +360,7 @@ class DigestService:
                 db.close()
     
     @staticmethod
-    def get_recent_digests(days: int = 30, limit: int = 50, db: Session = None) -> List[Digest]:
+    def get_recent_digests(days: int = 30, limit: int = 50, db: Session | None = None) -> List[Digest]:
         """获取最近的摘要
         
         Args:
